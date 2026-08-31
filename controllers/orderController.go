@@ -80,3 +80,29 @@ func UpdateStatusOrder(c *gin.Context) {
 		"data":    order,
 	})
 }
+
+// Membatalkan Pesanan (Khusus Pelanggan/Admin)
+func CancelOrder(c *gin.Context) {
+	idOrder := c.Param("id_order")
+	var order models.Order
+
+	// 1. Cari pesanan berdasarkan ID
+	if err := config.DB.First(&order, idOrder).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Pesanan tidak ditemukan"})
+		return
+	}
+
+	// 2. Cek apakah pesanan masih berstatus 'Proses' (hanya bisa dibatalkan jika belum selesai)
+	if order.Status != "Proses" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Pesanan yang sudah selesai atau dibatalkan tidak dapat diubah"})
+		return
+	}
+
+	// 3. Update status pesanan menjadi 'Canceled'
+	config.DB.Model(&order).Update("status", "Canceled")
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Pesanan berhasil dibatalkan",
+		"data":    order,
+	})
+}

@@ -26,6 +26,7 @@ func main() {
 		protected.POST("/orders", controllers.CreateOrder)
 		protected.GET("/orders/pelanggan/:id_pelanggan", controllers.GetOrdersByPelanggan)
 		protected.PUT("/orders/status/:id_order", controllers.UpdateStatusOrder)
+		protected.PUT("/orders/cancel/:id_order", controllers.CancelOrder) // Route Pembatalan Pesanan
 
 		// Route Pembayaran
 		protected.POST("/pembayaran", controllers.BayarPesanan)
