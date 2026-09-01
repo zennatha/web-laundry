@@ -41,11 +41,42 @@ func AuthMiddleware() gin.HandlerFunc {
 			return
 		}
 
-		// Simpan klaim data user dari token ke context Gin
+		// Simpan klaim data user dan role dari token ke context Gin
 		if claims, ok := token.Claims.(jwt.MapClaims); ok {
 			c.Set("id_pelanggan", claims["id_pelanggan"])
+			c.Set("role", claims["role"]) // <-- Menambahkan role ke context Gin
 		}
 
 		c.Next()
+	}
+}
+
+// Middleware baru untuk mengecek Policy / Role akses
+func RequireRole(allowedRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		userRole, exists := c.Get("role")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Role tidak ditemukan pada token!"})
+			c.Abort()
+			return
+		}
+
+		roleStr, ok := userRole.(string)
+		if !ok {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Format role tidak valid!"})
+			c.Abort()
+			return
+		}
+
+		// Cek apakah role user ada di dalam daftar role yang diizinkan
+		for _, role := range allowedRoles {
+			if roleStr == role {
+				c.Next()
+				return
+			}
+		}
+
+		c.JSON(http.StatusForbidden, gin.H{"error": "Akses ditolak, Anda tidak memiliki izin untuk halaman ini!"})
+		c.Abort()
 	}
 }

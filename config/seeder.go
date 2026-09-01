@@ -20,7 +20,7 @@ func (Admin) TableName() string {
 
 func SeedAdmin() {
 	var count int64
-	DB.Model(&Admin{}).Where("email = ?", "admin@laundry.com").Count(&count)
+	DB.Model(&Admin{}).Where("email = ?", "zenncatt1@gmail.com").Count(&count)
 
 	// Jika admin belum ada, buat admin baru dengan password ter-hash
 	if count == 0 {
@@ -31,8 +31,8 @@ func SeedAdmin() {
 		}
 
 		admin := Admin{
-			Nama:     "Admin Laundry",
-			Email:    "admin@laundry.com",
+			Nama:     "zen",                 // <-- Nama diubah menjadi zen
+			Email:    "zenncatt1@gmail.com", // <-- Email diubah
 			Password: string(hashedPassword),
 		}
 

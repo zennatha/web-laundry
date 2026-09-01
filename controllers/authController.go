@@ -7,6 +7,7 @@ import (
 
 	"laundry-app/config"
 	"laundry-app/models"
+	"laundry-app/policy"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v5"
@@ -87,12 +88,12 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// --- PERUBAHAN JWT DI SINI ---
-	// Buat JWT Token (Berlaku 24 Jam)
+	// Buat JWT Token dengan tambahan klaim role
 	secret := os.Getenv("JWT_SECRET")
 	claims := jwt.MapClaims{
 		"id_pelanggan": pelanggan.IDPelanggan,
 		"email":        pelanggan.Email,
+		"role":         policy.Pelanggan, // Menambahkan role pelanggan
 		"exp":          time.Now().Add(time.Hour * 24).Unix(),
 	}
 
@@ -103,7 +104,6 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Kembalikan token ke response JSON
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Login berhasil",
 		"token":   tokenString,
@@ -111,6 +111,68 @@ func Login(c *gin.Context) {
 			"id_pelanggan": pelanggan.IDPelanggan,
 			"nama":         pelanggan.Nama,
 			"email":        pelanggan.Email,
+			"role":         policy.Pelanggan,
+		},
+	})
+}
+
+// Struct pendukung untuk Login Admin
+type AdminModel struct {
+	IDAdmin  uint   `gorm:"primaryKey;column:id_admin"`
+	Nama     string `gorm:"column:nama"`
+	Email    string `gorm:"column:email"`
+	Password string `gorm:"column:password"`
+}
+
+func (AdminModel) TableName() string {
+	return "admin"
+}
+
+func LoginAdmin(c *gin.Context) {
+	var input struct {
+		Email    string `json:"email" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var admin AdminModel
+	if err := config.DB.Where("email = ?", input.Email).First(&admin).Error; err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email atau password admin salah"})
+		return
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(input.Password)); err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email atau password admin salah"})
+		return
+	}
+
+	secret := os.Getenv("JWT_SECRET")
+	claims := jwt.MapClaims{
+		"id_admin": admin.IDAdmin,
+		"email":    admin.Email,
+		"role":     policy.Admin, // Menambahkan role admin
+		"exp":      time.Now().Add(time.Hour * 24).Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString([]byte(secret))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat token autentikasi"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login Admin berhasil",
+		"token":   tokenString,
+		"user": gin.H{
+			"id_admin": admin.IDAdmin,
+			"nama":     admin.Nama,
+			"email":    admin.Email,
+			"role":     policy.Admin,
 		},
 	})
 }
