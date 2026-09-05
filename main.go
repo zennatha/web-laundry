@@ -4,8 +4,9 @@ import (
 	"laundry-app/config"
 	"laundry-app/controllers"
 	"laundry-app/middleware"
-	"laundry-app/policy" // Import package policy
+	"laundry-app/policy"
 
+	"github.com/gin-contrib/cors" // Import middleware CORS
 	"github.com/gin-gonic/gin"
 )
 
@@ -13,15 +14,24 @@ func main() {
 	// 1. Hubungkan ke database MariaDB
 	config.ConnectDatabase()
 
-	// 2. Jalankan seeder admin (Otomatis hash password admin di DB jika belum ada)
+	// 2. Jalankan seeder admin
 	config.SeedAdmin()
 
 	r := gin.Default()
 
+	// 3. Konfigurasi CORS (Izinkan akses dari Frontend)
+	r.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost:3000", "http://localhost:5173"}, // URL Frontend (React/Vite)
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
+		ExposeHeaders:    []string{"Content-Length"},
+		AllowCredentials: true,
+	}))
+
 	// Route Publik (Bisa diakses tanpa token)
 	r.POST("/api/register", controllers.Register)
 	r.POST("/api/login", controllers.Login)
-	r.POST("/api/login/admin", controllers.LoginAdmin) // <-- Route Login Admin Baru
+	r.POST("/api/login/admin", controllers.LoginAdmin)
 	r.GET("/api/layanan", controllers.GetLayanan)
 
 	// Route Terproteksi (Wajib membawa JWT Token)
