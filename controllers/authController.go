@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"time"
@@ -14,6 +15,19 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// Struct pendukung untuk Model Admin
+type AdminModel struct {
+	IDAdmin  uint   `gorm:"primaryKey;column:id_admin" json:"id_admin"`
+	Nama     string `gorm:"column:nama" json:"nama"`
+	Email    string `gorm:"column:email" json:"email"`
+	Password string `gorm:"column:password" json:"password"`
+}
+
+func (AdminModel) TableName() string {
+	return "admin"
+}
+
+// ==================== REGISTER PELANGGAN ====================
 func Register(c *gin.Context) {
 	var input struct {
 		Nama     string `json:"nama" binding:"required"`
@@ -28,14 +42,12 @@ func Register(c *gin.Context) {
 		return
 	}
 
-	// 1. Cek dulu apakah email sudah terdaftar di database
 	var existingUser models.Pelanggan
 	if err := config.DB.Where("email = ?", input.Email).First(&existingUser).Error; err == nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email sudah terdaftar!"})
 		return
 	}
 
-	// 2. Hash Password
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memproses password"})
@@ -50,7 +62,6 @@ func Register(c *gin.Context) {
 		Password: string(hashedPassword),
 	}
 
-	// 3. Simpan ke Database
 	if err := config.DB.Create(&pelanggan).Error; err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -66,6 +77,53 @@ func Register(c *gin.Context) {
 	})
 }
 
+// ==================== REGISTER ADMIN BARU ====================
+func RegisterAdmin(c *gin.Context) {
+	var input struct {
+		Nama     string `json:"nama" binding:"required"`
+		Email    string `json:"email" binding:"required"`
+		Password string `json:"password" binding:"required"`
+	}
+
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var existingAdmin AdminModel
+	if err := config.DB.Where("email = ?", input.Email).First(&existingAdmin).Error; err == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email admin sudah terdaftar!"})
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memproses password"})
+		return
+	}
+
+	admin := AdminModel{
+		Nama:     input.Nama,
+		Email:    input.Email,
+		Password: string(hashedPassword),
+	}
+
+	if err := config.DB.Create(&admin).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusCreated, gin.H{
+		"message": "Registrasi Admin berhasil",
+		"data": gin.H{
+			"id_admin": admin.IDAdmin,
+			"nama":     admin.Nama,
+			"email":    admin.Email,
+		},
+	})
+}
+
+// ==================== LOGIN PELANGGAN ====================
 func Login(c *gin.Context) {
 	var input struct {
 		Email    string `json:"email" binding:"required"`
@@ -88,12 +146,11 @@ func Login(c *gin.Context) {
 		return
 	}
 
-	// Buat JWT Token dengan tambahan klaim role
 	secret := os.Getenv("JWT_SECRET")
 	claims := jwt.MapClaims{
 		"id_pelanggan": pelanggan.IDPelanggan,
 		"email":        pelanggan.Email,
-		"role":         policy.Pelanggan, // Menambahkan role pelanggan
+		"role":         policy.Pelanggan,
 		"exp":          time.Now().Add(time.Hour * 24).Unix(),
 	}
 
@@ -116,18 +173,7 @@ func Login(c *gin.Context) {
 	})
 }
 
-// Struct pendukung untuk Login Admin
-type AdminModel struct {
-	IDAdmin  uint   `gorm:"primaryKey;column:id_admin"`
-	Nama     string `gorm:"column:nama"`
-	Email    string `gorm:"column:email"`
-	Password string `gorm:"column:password"`
-}
-
-func (AdminModel) TableName() string {
-	return "admin"
-}
-
+// ==================== LOGIN ADMIN ====================
 func LoginAdmin(c *gin.Context) {
 	var input struct {
 		Email    string `json:"email" binding:"required"`
@@ -135,17 +181,22 @@ func LoginAdmin(c *gin.Context) {
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Format data tidak valid: " + err.Error()})
 		return
 	}
 
+	// Print ke terminal Go untuk memastikan request dari Vue masuk
+	fmt.Printf("\n[LOGIN ATTEMPT] Email: %s | Password: %s\n", input.Email, input.Password)
+
 	var admin AdminModel
 	if err := config.DB.Where("email = ?", input.Email).First(&admin).Error; err != nil {
+		fmt.Println("[LOGIN FAILED] Email tidak ditemukan di database:", input.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email atau password admin salah"})
 		return
 	}
 
 	if err := bcrypt.CompareHashAndPassword([]byte(admin.Password), []byte(input.Password)); err != nil {
+		fmt.Println("[LOGIN FAILED] Password tidak cocok untuk email:", input.Email)
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Email atau password admin salah"})
 		return
 	}
@@ -154,7 +205,7 @@ func LoginAdmin(c *gin.Context) {
 	claims := jwt.MapClaims{
 		"id_admin": admin.IDAdmin,
 		"email":    admin.Email,
-		"role":     policy.Admin, // Menambahkan role admin
+		"role":     policy.Admin,
 		"exp":      time.Now().Add(time.Hour * 24).Unix(),
 	}
 
@@ -164,6 +215,8 @@ func LoginAdmin(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal membuat token autentikasi"})
 		return
 	}
+
+	fmt.Println("[LOGIN SUCCESS] Login Admin berhasil untuk:", input.Email)
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Login Admin berhasil",

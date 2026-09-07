@@ -19,27 +19,54 @@ func (Admin) TableName() string {
 }
 
 func SeedAdmin() {
-	var count int64
-	DB.Model(&Admin{}).Where("email = ?", "zenncatt1@gmail.com").Count(&count)
+	var admin Admin
 
-	// Jika admin belum ada, buat admin baru dengan password ter-hash
-	if count == 0 {
-		hashedPassword, err := bcrypt.GenerateFromPassword([]byte("admin123"), bcrypt.DefaultCost)
+	// Cari admin berdasarkan email
+	err := DB.Where("email = ?", "zenncatt1@gmail.com").First(&admin).Error
+
+	if err != nil {
+		// Jika admin belum ada, buat akun baru
+		hashedPassword, err := bcrypt.GenerateFromPassword(
+			[]byte("admin123"),
+			bcrypt.DefaultCost,
+		)
+
 		if err != nil {
 			log.Println("Gagal meng-hash password admin:", err)
 			return
 		}
 
-		admin := Admin{
-			Nama:     "zen",                 // <-- Nama diubah menjadi zen
-			Email:    "zenncatt1@gmail.com", // <-- Email diubah
+		admin = Admin{
+			Nama:     "zen",
+			Email:    "zenncatt1@gmail.com",
 			Password: string(hashedPassword),
 		}
 
 		if err := DB.Create(&admin).Error; err != nil {
-			log.Println("Gagal membuat seed admin:", err)
+			log.Println("Gagal membuat admin:", err)
 		} else {
-			log.Println("Seeder Admin berhasil dibuat!")
+			log.Println("Admin berhasil dibuat!")
 		}
+
+		return
+	}
+
+	// Jika admin sudah ada, reset password menjadi admin123
+	hashedPassword, err := bcrypt.GenerateFromPassword(
+		[]byte("admin123"),
+		bcrypt.DefaultCost,
+	)
+
+	if err != nil {
+		log.Println("Gagal meng-hash password:", err)
+		return
+	}
+
+	admin.Password = string(hashedPassword)
+
+	if err := DB.Save(&admin).Error; err != nil {
+		log.Println("Gagal memperbarui password admin:", err)
+	} else {
+		log.Println("Password admin berhasil diperbarui!")
 	}
 }
