@@ -1,9 +1,10 @@
 package controllers
 
 import (
+	"net/http"
+
 	"laundry-app/config"
 	"laundry-app/models"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 )
@@ -23,11 +24,23 @@ func BayarPesanan(c *gin.Context) {
 		return
 	}
 
-	// Update status di tabel order menjadi 'Lunas' atau 'Selesai'
+	// Update status di tabel order menjadi 'Selesai'
 	config.DB.Model(&models.Order{}).Where("id_order = ?", input.IDOrder).Update("status", "Selesai")
 
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Pembayaran berhasil dilakukan!",
 		"data":    input,
 	})
+}
+
+// GetPembayaran - Mengambil seluruh data pembayaran untuk Admin & Pelanggan
+func GetPembayaran(c *gin.Context) {
+	var listPembayaran []models.Pembayaran
+
+	if err := config.DB.Find(&listPembayaran).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil data pembayaran"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": listPembayaran})
 }

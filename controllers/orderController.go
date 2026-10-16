@@ -9,13 +9,16 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// Membuat Pesanan Baru (Membuat Pesanan - Pelanggan/Admin)
+// Membuat Pesanan Baru (Pelanggan / Admin)
 func CreateOrder(c *gin.Context) {
 	var input struct {
 		IDPelanggan uint    `json:"id_pelanggan" binding:"required"`
-		Layanan     string  `json:"layanan" binding:"required"`
-		Berat       float64 `json:"berat" binding:"required"`
-		Harga       int     `json:"harga" binding:"required"`
+		IDLayanan   uint    `json:"id_layanan"`
+		Layanan     string  `json:"layanan"`
+		TotalBerat  float64 `json:"total_berat"`
+		Berat       float64 `json:"berat"`
+		TotalHarga  int     `json:"total_harga"`
+		Harga       int     `json:"harga"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -23,12 +26,35 @@ func CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// Normalisasi field agar menerima request dari Vue frontend maupun Postman
+	berat := input.TotalBerat
+	if berat == 0 {
+		berat = input.Berat
+	}
+
+	harga := input.TotalHarga
+	if harga == 0 {
+		harga = input.Harga
+	}
+
+	layanan := input.Layanan
+	if layanan == "" && input.IDLayanan != 0 {
+		var l models.Layanan
+		if err := config.DB.First(&l, input.IDLayanan).Error; err == nil {
+			layanan = l.NamaLayanan
+		} else {
+			layanan = "Cuci Reguler"
+		}
+	} else if layanan == "" {
+		layanan = "Cuci Reguler"
+	}
+
 	order := models.Order{
 		IDPelanggan: input.IDPelanggan,
-		Layanan:     input.Layanan,
-		Berat:       input.Berat,
-		Harga:       input.Harga,
-		Status:      "Proses",
+		Layanan:     layanan,
+		Berat:       berat,
+		Harga:       harga,
+		Status:      "Menunggu",
 	}
 
 	if err := config.DB.Create(&order).Error; err != nil {
@@ -42,7 +68,19 @@ func CreateOrder(c *gin.Context) {
 	})
 }
 
-// Melihat Status & Riwayat Laundry Pelanggan
+// Melihat Semua Pesanan (Khusus Admin)
+func GetAllOrders(c *gin.Context) {
+	var orders []models.Order
+
+	if err := config.DB.Find(&orders).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal mengambil seluruh data pesanan"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"data": orders})
+}
+
+// Melihat Status & Riwayat Laundry berdasarkan ID Pelanggan
 func GetOrdersByPelanggan(c *gin.Context) {
 	idPelanggan := c.Param("id_pelanggan")
 	var orders []models.Order
@@ -59,7 +97,8 @@ func GetOrdersByPelanggan(c *gin.Context) {
 func UpdateStatusOrder(c *gin.Context) {
 	idOrder := c.Param("id_order")
 	var input struct {
-		Status string `json:"status" binding:"required"`
+		StatusOrder string `json:"status_order"`
+		Status      string `json:"status"`
 	}
 
 	if err := c.ShouldBindJSON(&input); err != nil {
@@ -67,13 +106,26 @@ func UpdateStatusOrder(c *gin.Context) {
 		return
 	}
 
+	statusBaru := input.StatusOrder
+	if statusBaru == "" {
+		statusBaru = input.Status
+	}
+
+	if statusBaru == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Status tidak boleh kosong"})
+		return
+	}
+
 	var order models.Order
-	if err := config.DB.First(&order, idOrder).Error; err != nil {
+	if err := config.DB.Where("id_order = ?", idOrder).First(&order).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pesanan tidak ditemukan"})
 		return
 	}
 
-	config.DB.Model(&order).Update("status", input.Status)
+	if err := config.DB.Model(&order).Where("id_order = ?", idOrder).Update("status", statusBaru).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal memperbarui status"})
+		return
+	}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Status pesanan berhasil diperbarui",
@@ -81,25 +133,22 @@ func UpdateStatusOrder(c *gin.Context) {
 	})
 }
 
-// Membatalkan Pesanan (Khusus Pelanggan/Admin)
+// Membatalkan Pesanan (Khusus Pelanggan / Admin)
 func CancelOrder(c *gin.Context) {
 	idOrder := c.Param("id_order")
 	var order models.Order
 
-	// 1. Cari pesanan berdasarkan ID
-	if err := config.DB.First(&order, idOrder).Error; err != nil {
+	if err := config.DB.Where("id_order = ?", idOrder).First(&order).Error; err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Pesanan tidak ditemukan"})
 		return
 	}
 
-	// 2. Cek apakah pesanan masih berstatus 'Proses' (hanya bisa dibatalkan jika belum selesai)
-	if order.Status != "Proses" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Pesanan yang sudah selesai atau dibatalkan tidak dapat diubah"})
+	if order.Status == "Selesai" || order.Status == "Diambil" || order.Status == "Canceled" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Pesanan yang sudah selesai/dibatalkan tidak dapat diubah"})
 		return
 	}
 
-	// 3. Update status pesanan menjadi 'Canceled'
-	config.DB.Model(&order).Update("status", "Canceled")
+	config.DB.Model(&order).Where("id_order = ?", idOrder).Update("status", "Canceled")
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Pesanan berhasil dibatalkan",
