@@ -2,6 +2,7 @@ package config
 
 import (
 	"log"
+	"os"
 
 	"golang.org/x/crypto/bcrypt"
 )
@@ -21,13 +22,29 @@ func (Admin) TableName() string {
 func SeedAdmin() {
 	var admin Admin
 
-	// Cari admin berdasarkan email
-	err := DB.Where("email = ?", "zenncatt1@gmail.com").First(&admin).Error
+	// 1. Ambil data kredensial dari environment variable (.env)
+	email := os.Getenv("SEED_ADMIN_EMAIL")
+	if email == "" {
+		email = "admin@laundry.com" // Default fallback jika .env belum diisi
+	}
+
+	password := os.Getenv("SEED_ADMIN_PASSWORD")
+	if password == "" {
+		password = "admin123" // Default fallback
+	}
+
+	nama := os.Getenv("SEED_ADMIN_NAMA")
+	if nama == "" {
+		nama = "Admin Laundry" // Default fallback
+	}
+
+	// 2. Cari admin berdasarkan email dari .env
+	err := DB.Where("email = ?", email).First(&admin).Error
 
 	if err != nil {
 		// Jika admin belum ada, buat akun baru
 		hashedPassword, err := bcrypt.GenerateFromPassword(
-			[]byte("admin123"),
+			[]byte(password),
 			bcrypt.DefaultCost,
 		)
 
@@ -37,8 +54,8 @@ func SeedAdmin() {
 		}
 
 		admin = Admin{
-			Nama:     "zen",
-			Email:    "zenncatt1@gmail.com",
+			Nama:     nama,
+			Email:    email,
 			Password: string(hashedPassword),
 		}
 
@@ -51,9 +68,9 @@ func SeedAdmin() {
 		return
 	}
 
-	// Jika admin sudah ada, reset password menjadi admin123
+	// 3. Jika admin sudah ada, perbarui data & password sesuai .env
 	hashedPassword, err := bcrypt.GenerateFromPassword(
-		[]byte("admin123"),
+		[]byte(password),
 		bcrypt.DefaultCost,
 	)
 
@@ -62,6 +79,7 @@ func SeedAdmin() {
 		return
 	}
 
+	admin.Nama = nama
 	admin.Password = string(hashedPassword)
 
 	if err := DB.Save(&admin).Error; err != nil {
